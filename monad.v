@@ -1,7 +1,12 @@
-From mathcomp Require Import ssreflect ssrfun ssrbool ssrint eqtype ssrnat seq choice fintype rat finfun.
+From mathcomp Require Import ssreflect ssrfun ssrbool ssrint eqtype ssrnat seq choice fintype finset rat finfun.
 From mathcomp Require Import bigop ssralg div ssrnum ssrint order finmap.
 
 Module Monad.
+
+(* Here we generalize monads not to be Type -> Type but rather dom -> Type, where dom is an arbitrary kind. This enables T to be from choiceType to Type, etc. clof then is the projection from dom back down to Type (ie, Choice.sort) 
+
+  Additionally we generalize the monad laws to be over an arbitrary relation mrel. in many cases this will be equal to (fun A => @eq (T A)) but could also be =1, in the case of state monad (not extensional)
+*)
 
   Record axiom (dom : Type) (clof : dom -> Type) (T : dom -> Type) (mrel : forall A, T A -> T A -> Prop) (mret : forall A, clof A -> T A) (bind : forall A B, T A -> (clof A -> T B) -> T B) :=
     {
@@ -138,3 +143,70 @@ Canonical stateMonadMixin S := Eval hnf in MonadMixin _ _ _ _ _ _ (state_monadax
 Canonical stateMonadType S := Eval hnf in MonadType _ _ _ _ (stateMonadMixin S).
 
 Check (fun (c : State _ _) => (x <- c; put x)).
+
+(* finset *)
+
+Lemma finset_monadax : Monad.axiom finType Finite.sort (fun A => {set A}) (fun A => @eq {set A})
+                                   (fun (A : finType) (x : A) => set1 x)
+                                   (fun A B (x : {set A}) (f : A -> {set B}) =>
+                                     \bigcup_(a in x) (f a)).
+  constructor; rewrite //=.
+  move => A B x f; rewrite big_set1 //=.
+  move => A m; apply/setP => x; apply Bool.eq_iff_eq_true; split.
+  move/bigcupP; elim => x0 Hx0; rewrite in_set; move/eqP => ->; done.
+  move => H; apply/bigcupP; eexists.
+  apply H.
+  rewrite in_set //=.
+  move=>A B C m f g.
+
+  apply/setP => x; apply Bool.eq_iff_eq_true; split.
+  move/bigcupP; elim => b /bigcupP => [[i Hi] Hb] Hc.
+  apply/bigcupP; eexists.
+  apply Hi.
+  apply/bigcupP; eexists.
+  apply Hb.
+  done.
+
+  move/bigcupP; elim => a Ha /bigcupP => [[i Hi] Hb]; apply/bigcupP; eexists.
+  apply/bigcupP; eexists.
+  apply Ha.
+  apply Hi.
+  done.
+Qed.
+
+Canonical setMonadMixin := Eval hnf in MonadMixin _ _ _ _ _ _ (finset_monadax).
+Canonical setMonadType := Eval hnf in MonadType _ _ _ _ (setMonadMixin).
+
+(* fset *)
+
+Lemma fset_monadax : Monad.axiom choiceType Choice.sort (fun A => {fset A}) (fun A => @eq {fset A})
+                                   (fun (A : choiceType) (x : A) => fset1 x)
+                                   (fun A B (x : {fset A}) (f : A -> {fset B}) =>
+                                     \bigcup_(a <- x) (f a))%fset.
+  constructor; rewrite //=.
+  move => A B x f; rewrite big_seq_fset1 //=.
+  move => A m; apply/fsetP => x; apply Bool.eq_iff_eq_true; split.
+  move/bigfcupP; elim => x0 Hx0; rewrite in_fset //= in_cons //= in_nil orbF; move/eqP => ->; elim (andP Hx0); done.
+  move => H; apply/bigfcupP; eexists.
+  apply/andP; split; [apply H | done].
+  rewrite in_fset in_cons eq_refl //=.
+
+  move=>A B C m f g.
+  apply/fsetP => x; apply Bool.eq_iff_eq_true; split.
+  move/bigfcupP; elim => b /andP ; elim => /bigfcupP; elim => a /andP [Ha _] Hb _ Hg.
+  apply/bigfcupP; eexists.
+  apply/andP; split; [apply Ha | done].
+  apply/bigfcupP; eexists.
+  apply/andP; split; [apply Hb | done].
+  done.
+
+  move/bigfcupP; elim => a /andP [Ha _] /bigfcupP => [[i /andP [Hi _]] Hg].
+  apply/bigfcupP; eexists.
+  apply/andP; split; [apply/bigfcupP; eexists| done].
+  apply/andP; split; [apply Ha | done].
+  apply Hi.
+  done.
+Qed.
+
+Canonical fsetMonadMixin := Eval hnf in MonadMixin _ _ _ _ _ _ (fset_monadax).
+Canonical fsetMonadType := Eval hnf in MonadType _ _ _ _ (fsetMonadMixin).
